@@ -11,12 +11,7 @@ fun main() {
     )
 
     runBlocking {
-        val job = launch {
-            test.run()
-        }
-
-        job.join() // Wait for the coroutine to complete
-        println("Done")
+        test.run()
     }
 
 }

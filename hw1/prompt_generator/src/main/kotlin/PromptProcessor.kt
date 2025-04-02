@@ -9,21 +9,51 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 
+/**
+ * Interface for processing generated prompts through LLM services.
+ *
+ * Handles the execution of prompt requests and returns processed responses.
+ * Implementations may connect to various LLM APIs or provide mock responses.
+ */
 interface PromptProcessor {
     /**
-     * Processes generated prompts and returns responses
-     * @param requests List of prompt requests with unique IDs
-     * @return Map of response IDs to their content
+     * Processes a batch of prompts asynchronously.
+     *
+     * @param requests List of [PromptRequest] objects containing:
+     *        - id: Unique identifier for each prompt
+     *        - prompt: Fully resolved prompt text
+     * @return Map associating each request ID with its corresponding response
+     * @throws PromptProcessingException for API failures or network errors
      */
     suspend fun processPrompts(requests: List<PromptRequest>): Map<String, String>
 
     /**
-     * Optional: Process single prompt (default implementation provided)
+     * Convenience method for processing a single prompt.
+     *
+     * Default implementation processes the prompt as a batch of one.
+     *
+     * @param request Single prompt request to process
+     * @return The processed response content
+     * @throws PromptProcessingException for API failures or network errors
+     * @throws NoSuchElementException if no response is received
      */
     suspend fun processPrompt(request: PromptRequest): String =
         processPrompts(listOf(request))[request.id] ?: error("No response received")
 }
 
+/**
+ * Hugging Face API implementation of [PromptProcessor].
+ *
+ * Features:
+ * - Supports all Hugging Face inference endpoints
+ * - Configurable generation parameters
+ * - Automatic request retries
+ * - Parallel request processing
+ *
+ * @property apiToken Hugging Face API token
+ * @property modelId Model identifier (e.g., "HuggingFaceH4/zephyr-7b-beta")
+ * @property timeoutSeconds Network timeout in seconds
+ */
 class HuggingFacePromptProcessor(
     private val apiToken: String,
     private val modelId: String = "HuggingFaceH4/zephyr-7b-beta",
@@ -37,11 +67,17 @@ class HuggingFacePromptProcessor(
         .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
         .build()
 
+    /**
+     * Internal request data structure for Hugging Face API.
+     */
     @Serializable
     private data class HuggingFaceRequest(
         val inputs: String,
         val parameters: Parameters = Parameters()
     ) {
+        /**
+         * Generation parameters for controlling output.
+         */
         @Serializable
         data class Parameters(
             val max_new_tokens: Int = 200,
@@ -50,11 +86,19 @@ class HuggingFacePromptProcessor(
         )
     }
 
+    /**
+     * Internal response data structure for Hugging Face API.
+     */
     @Serializable
     private data class HuggingFaceResponse(
         val generated_text: String
     )
 
+    /**
+     * Processes prompts in parallel using coroutines.
+     *
+     * Makes concurrent API calls while preserving request-response mapping.
+     */
     override suspend fun processPrompts(requests: List<PromptRequest>): Map<String, String> {
         return coroutineScope {
             requests.map { request ->
@@ -65,6 +109,13 @@ class HuggingFacePromptProcessor(
         }
     }
 
+    /**
+     * Executes single API call to Hugging Face inference endpoint.
+     *
+     * @param prompt The fully resolved prompt text to process
+     * @return The generated response content
+     * @throws PromptProcessingException for API errors or network failures
+     */
     private fun processSinglePrompt(prompt: String): String {
         val requestBody = jsonFormat.encodeToString(
             HuggingFaceRequest(inputs = prompt)
@@ -103,6 +154,12 @@ class HuggingFacePromptProcessor(
     }
 }
 
+/**
+ * Exception for prompt processing failures.
+ *
+ * @property message Description of the error
+ * @property cause Underlying exception if available
+ */
 class PromptProcessingException(
     message: String,
     cause: Throwable? = null
