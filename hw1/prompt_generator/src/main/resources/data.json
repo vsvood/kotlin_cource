@@ -1,0 +1,17 @@
+{
+  "template": "Hi, {data.name}! {data.question}?",
+  "data": [
+    {
+      "data" : {
+        "name": "Alex",
+        "question": "How are you"
+      }
+    },
+    {
+      "data" : {
+        "name": "Max",
+        "question": "Want smth to eat"
+      }
+    }
+  ]
+}
